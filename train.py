@@ -30,12 +30,16 @@ from cutmix.utils import CutMixCrossEntropyLoss
 from autoaug.archive import fa_reduced_cifar10, fa_reduced_imagenet, autoaug_paper_cifar10, autoaug_policy
 from autoaug.augmentations import Augmentation
 
+from rbg.model import get_model
+import sys
+
 warnings.filterwarnings("ignore")
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
                      and callable(models.__dict__[name]))
 
+"""
 parser = ConfigArgumentParser(conflict_handler='resolve')
 parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
@@ -49,14 +53,44 @@ parser.add_argument('--checkpoint', default='', type=str)
 
 parser.set_defaults(bottleneck=True)
 parser.set_defaults(verbose=True)
+"""
 
 best_err1 = 100
 best_err5 = 100
 
 
+class Args:
+  def __init__(self):
+    self.dataset = "cifar10"
+    self.net_type = "resnet"
+    self.depth = 20
+    self.epochs = 200
+    self.batch_size = 256
+    self.lr = 0.1
+    self.momentum = 0.9
+    self.weight_decay = 0.0001
+    self.cutmix_beta = 1.0
+    self.cutmix_prob = 1.0
+    self.cutmix_num = 1
+    self.workers = 0
+    self.expname = "TEST"
+    self.cifarpath = "~/private/pretrainedmodels/"
+    self.imagenetpath = "~/private/pretrainedmodels/"
+    self.autoaug = ""
+    self.cv = -1
+    self.checkpoint = ""
+    self.rbg = True
+
+
 def main():
     global args, best_err1, best_err5
-    args = parser.parse_args()
+    # args = parser.parse_args()
+    args = Args()
+    if sys.argv[1] == "0":
+        args.rbg = False
+    args.dataset = sys.argv[2]
+    args.expname = sys.argv[3]
+    print(args.rbg, args.dataset, args.expname)
 
     if args.dataset.startswith('cifar'):
         normalize = transforms.Normalize(
@@ -211,7 +245,11 @@ def main():
 
     print("=> creating model '{}'".format(args.net_type))
     if args.net_type == 'resnet':
-        model = RN.ResNet(args.dataset, args.depth, numberofclass, True)
+        if args.rbg:
+            model, preprocess = get_model("resnet20", "cifar10", "rbg", 0.1)
+        else:
+            model, preprocess = get_model("resnet20", "cifar10", "scratch", 0.1)
+        # model = RN.ResNet(args.dataset, args.depth, numberofclass, True)
     elif args.net_type == 'pyramidnet':
         model = PYRM.PyramidNet(args.dataset, args.depth, args.alpha, numberofclass, True)
     elif 'wresnet' in args.net_type:
@@ -234,13 +272,16 @@ def main():
 
         # train for one epoch
         model.train()
-        err1, err5, train_loss = run_epoch(train_loader, model, criterion, optimizer, epoch, 'train')
+        err1, err5, train_loss = run_epoch(train_loader, model, criterion, optimizer, epoch, 'train', True)
+        # err1, err5, train_loss = run_epoch(train_loader, model, criterion, optimizer, epoch, 'train')
         train_err1 = err1
-        err1, err5, train_loss = run_epoch(tval_loader, model, criterion, None, epoch, 'train-val')
+        err1, err5, train_loss = run_epoch(tval_loader, model, criterion, None, epoch, 'train-val', True)
+        # err1, err5, train_loss = run_epoch(tval_loader, model, criterion, None, epoch, 'train-val')
 
         # evaluate on validation set
         model.eval()
-        err1, err5, val_loss = run_epoch(val_loader, model, criterion, None, epoch, 'valid')
+        err1, err5, val_loss = run_epoch(val_loader, model, criterion, None, epoch, 'valid', True)
+        # err1, err5, val_loss = run_epoch(val_loader, model, criterion, None, epoch, 'valid')
 
         # remember best prec@1 and save checkpoint
         is_best = err1 <= best_err1
@@ -261,7 +302,7 @@ def main():
     print('Best(top-1 and 5 error):', best_err1, best_err5)
 
 
-def run_epoch(loader, model, criterion, optimizer, epoch, tag):
+def run_epoch(loader, model, criterion, optimizer, epoch, tag, rbg=False):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
@@ -284,8 +325,12 @@ def run_epoch(loader, model, criterion, optimizer, epoch, tag):
 
         input, target = input.cuda(), target.cuda()
 
-        output = model(input)
-        loss = criterion(output, target)
+        if rbg:
+            output, changed_target = model(input, target)
+            loss = criterion(output, changed_target)
+        else:
+            output = model(input)
+            loss = criterion(output, target)
 
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
@@ -381,7 +426,7 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
         wrong_k = batch_size - correct_k
         res.append(wrong_k.mul_(100.0 / batch_size))
 
