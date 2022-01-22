@@ -90,7 +90,8 @@ def main():
         args.rbg = False
     args.dataset = sys.argv[2]
     args.expname = sys.argv[3]
-    print(args.rbg, args.dataset, args.expname)
+    args.cut_mix_prob = float(sys.argv[4])
+    print(args.rbg, args.dataset, args.expname, args.cut_mix_prob)
 
     if args.dataset.startswith('cifar'):
         normalize = transforms.Normalize(
