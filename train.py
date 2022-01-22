@@ -246,9 +246,9 @@ def main():
     print("=> creating model '{}'".format(args.net_type))
     if args.net_type == 'resnet':
         if args.rbg:
-            model, preprocess = get_model("resnet20", "cifar10", "rbg", 0.1)
+            model, preprocess = get_model("resnet20", args.dataset, "rbg", 0.1)
         else:
-            model, preprocess = get_model("resnet20", "cifar10", "scratch", 0.1)
+            model, preprocess = get_model("resnet20", args.dataset, "scratch", 0.1)
         # model = RN.ResNet(args.dataset, args.depth, numberofclass, True)
     elif args.net_type == 'pyramidnet':
         model = PYRM.PyramidNet(args.dataset, args.depth, args.alpha, numberofclass, True)
